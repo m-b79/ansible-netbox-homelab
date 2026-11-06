@@ -35,17 +35,13 @@
     dest: "{{ netbox_install_dir }}"
     version: "{{ netbox_version }}"
     update: true
+  register: netbox_git_checkout
 
 - name: Display deployed NetBox version
-  ansible.builtin.command:
-    cmd: git describe --tags --exact-match
-    chdir: "{{ netbox_install_dir }}"
-  register: netbox_git_version
-  changed_when: false
-
-- name: Show NetBox version
   ansible.builtin.debug:
-    msg: "NetBox source version: {{ netbox_git_version.stdout }}"
+    msg:
+      - "Requested version: {{ netbox_version }}"
+      - "Git commit: {{ netbox_git_checkout.after }}"
 
 - name: Ensure NetBox secrets are available
   ansible.builtin.assert:
@@ -94,25 +90,26 @@
     path: "{{ netbox_install_dir }}/.ansible-installed-{{ netbox_version }}"
   register: netbox_install_marker
 
-- name: Initialize NetBox application
-  ansible.builtin.command:
-    argv:
-      - /bin/bash
-      - "{{ netbox_install_dir }}/upgrade.sh"
-    chdir: "{{ netbox_install_dir }}"
-  environment:
-    PYTHON: /usr/bin/python3.12
-  register: netbox_install_result
+- name: Initialize NetBox when necessary
   when: not netbox_install_marker.stat.exists
+  block:
+    - name: Run NetBox upgrade script
+      ansible.builtin.command:
+        argv:
+          - /bin/bash
+          - "{{ netbox_install_dir }}/upgrade.sh"
+        chdir: "{{ netbox_install_dir }}"
+      environment:
+        PYTHON: /usr/bin/python3.12
+      changed_when: true
 
-- name: Mark NetBox version as initialized
-  ansible.builtin.file:
-    path: "{{ netbox_install_dir }}/.ansible-installed-{{ netbox_version }}"
-    state: touch
-    owner: root
-    group: root
-    mode: '0644'
-  when: netbox_install_result is changed
+    - name: Create installation marker
+      ansible.builtin.file:
+        path: "{{ netbox_install_dir }}/.ansible-installed-{{ netbox_version }}"
+        state: touch
+        owner: root
+        group: root
+        mode: '0644'
 
 - name: Verify NetBox Django configuration
   ansible.builtin.command:
