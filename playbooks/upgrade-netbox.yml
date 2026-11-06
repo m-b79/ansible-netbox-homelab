@@ -1,0 +1,19 @@
+---
+- name: Validate NetBox before upgrade
+  hosts: netbox-lab-01
+  become: true
+  gather_facts: true
+
+  roles:
+    - netbox_upgrade
+
+- name: Create pre-upgrade backup
+  hosts: netbox-lab-01
+  become: true
+  gather_facts: true
+
+  vars:
+    netbox_backup_retention_apply: false
+
+  roles:
+    - netbox_backup

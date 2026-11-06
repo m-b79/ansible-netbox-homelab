@@ -1,0 +1,13 @@
+---
+netbox_upgrade_install_dir: /opt/netbox
+netbox_upgrade_target_version: "v4.7.4"
+
+netbox_upgrade_min_disk_mb: 2048
+
+netbox_upgrade_required_services:
+  - apache2
+  - netbox
+  - netbox-rq
+  - redis-server
+
+netbox_upgrade_health_url: "http://127.0.0.1:8080/login/"

@@ -1,0 +1,105 @@
+---
+- name: Verify operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Ubuntu'
+      - ansible_facts['distribution_version'] == '24.04'
+    fail_msg: "Unsupported operating system."
+
+- name: Check current NetBox Git tag
+  ansible.builtin.command:
+    argv:
+      - git
+      - describe
+      - --tags
+      - --exact-match
+    chdir: "{{ netbox_upgrade_install_dir }}"
+  register: netbox_upgrade_current
+  changed_when: false
+
+- name: Display current and target versions
+  ansible.builtin.debug:
+    msg:
+      - "Current: {{ netbox_upgrade_current.stdout }}"
+      - "Target: {{ netbox_upgrade_target_version }}"
+
+- name: Validate target version
+  ansible.builtin.assert:
+    that:
+      - netbox_upgrade_target_version is match('^v[0-9]+\.[0-9]+\.[0-9]+$')
+      - >-
+        (netbox_upgrade_target_version | regex_replace('^v', ''))
+        is version(
+          netbox_upgrade_current.stdout | regex_replace('^v', ''),
+          '>='
+        )
+    fail_msg: "Target version must not be older than current."
+
+- name: Collect service information
+  ansible.builtin.service_facts:
+
+- name: Verify required services
+  ansible.builtin.assert:
+    that:
+      - item ~ '.service' in ansible_facts['services']
+      - >-
+        ansible_facts['services'].get(
+        item ~ '.service', {}).get('state') == 'running'
+    fail_msg: "Service {{ item }} is not running."
+  loop: "{{ netbox_upgrade_required_services }}"
+
+- name: Check available disk space
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -c
+      - >-
+        import os;
+        s=os.statvfs('/opt/netbox');
+        print(s.f_bavail*s.f_frsize//1048576)
+  register: netbox_upgrade_free_disk
+  changed_when: false
+
+- name: Validate disk space
+  ansible.builtin.assert:
+    that:
+      - >-
+        (netbox_upgrade_free_disk.stdout | int)
+        >= (netbox_upgrade_min_disk_mb | int)
+    fail_msg: "Insufficient free disk space."
+
+- name: Check Django configuration
+  ansible.builtin.command:
+    argv:
+      - "{{ netbox_upgrade_install_dir }}/venv/bin/python"
+      - "{{ netbox_upgrade_install_dir }}/netbox/manage.py"
+      - check
+  changed_when: false
+
+- name: Verify no database migrations are pending
+  ansible.builtin.command:
+    argv:
+      - "{{ netbox_upgrade_install_dir }}/venv/bin/python"
+      - "{{ netbox_upgrade_install_dir }}/netbox/manage.py"
+      - migrate
+      - --check
+  changed_when: false
+
+- name: Check NetBox HTTP response
+  ansible.builtin.uri:
+    url: "{{ netbox_upgrade_health_url }}"
+    status_code:
+      - 200
+      - 301
+      - 302
+    return_content: false
+
+- name: Preflight summary
+  ansible.builtin.debug:
+    msg:
+      - "Preflight passed on {{ inventory_hostname }}"
+      - "Current version: {{ netbox_upgrade_current.stdout }}"
+      - "Free disk: {{ netbox_upgrade_free_disk.stdout }} MiB"
+      - "Required services: running"
+      - "Django checks: passed"
+      - "HTTP health check: passed"

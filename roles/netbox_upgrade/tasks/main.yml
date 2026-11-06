@@ -1,0 +1,3 @@
+---
+- name: Run NetBox upgrade preflight checks
+  ansible.builtin.import_tasks: preflight.yml
