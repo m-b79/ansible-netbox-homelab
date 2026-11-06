@@ -1,0 +1,72 @@
+---
+- name: Define local archive path
+  ansible.builtin.set_fact:
+    netbox_backup_local_artifact: >-
+      {{ netbox_backup_local_directory }}/{{
+      netbox_backup_artifact | basename }}
+
+- name: Calculate remote SHA-256
+  ansible.builtin.stat:
+    path: "{{ netbox_backup_artifact }}"
+    checksum_algorithm: sha256
+    get_checksum: true
+  register: netbox_backup_remote_stat
+
+- name: Ensure remote archive exists
+  ansible.builtin.assert:
+    that:
+      - netbox_backup_remote_stat.stat.isreg | default(false)
+
+- name: Check local archive
+  ansible.builtin.stat:
+    path: "{{ netbox_backup_local_artifact }}"
+    checksum_algorithm: sha256
+    get_checksum: true
+  delegate_to: localhost
+  become: false
+  register: netbox_backup_local_before
+
+- name: Transfer archive when missing or different
+  ansible.builtin.shell: |
+    set -euo pipefail
+    umask 077
+    target={{ netbox_backup_local_artifact | quote }}
+    temp=$(mktemp "${target}.partial.XXXXXXXX")
+    trap 'rm -f "$temp"' EXIT
+
+    ssh -T -o BatchMode=yes \
+      {{ netbox_backup_remote_ssh_alias | quote }} \
+      "sudo -n cat {{ netbox_backup_artifact | quote }}" > "$temp"
+
+    mv -f "$temp" "$target"
+  args:
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  when: >-
+    not netbox_backup_local_before.stat.exists or
+    (netbox_backup_local_before.stat.checksum | default(''))
+    != netbox_backup_remote_stat.stat.checksum
+  changed_when: true
+
+- name: Calculate transferred archive checksum
+  ansible.builtin.stat:
+    path: "{{ netbox_backup_local_artifact }}"
+    checksum_algorithm: sha256
+    get_checksum: true
+  delegate_to: localhost
+  become: false
+  register: netbox_backup_local_after
+
+- name: Verify archive integrity
+  ansible.builtin.assert:
+    that:
+      - netbox_backup_local_after.stat.isreg | default(false)
+      - >-
+        netbox_backup_local_after.stat.checksum ==
+        netbox_backup_remote_stat.stat.checksum
+    success_msg: >-
+      SHA-256 verified: {{ netbox_backup_artifact | basename }}
+    fail_msg: >-
+      Archive integrity check failed:
+      {{ netbox_backup_artifact | basename }}

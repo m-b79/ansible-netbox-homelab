@@ -57,5 +57,14 @@
       - "Size: {{ netbox_backup_file_info.stat.size }} bytes"
       - "Archive listing check: passed"
 
-- name: Externalize PostgreSQL backup
+- name: Backup NetBox media
+  ansible.builtin.import_tasks: media.yml
+
+- name: Externalize NetBox backup archives
   ansible.builtin.import_tasks: transfer.yml
+
+- name: Generate NetBox backup manifest
+  ansible.builtin.import_tasks: manifest.yml
+
+- name: Apply local backup retention
+  ansible.builtin.import_tasks: retention.yml

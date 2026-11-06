@@ -7,52 +7,11 @@
   delegate_to: localhost
   become: false
 
-- name: Define local backup path
-  ansible.builtin.set_fact:
-    netbox_backup_local_file: >-
-      {{ netbox_backup_local_directory }}/{{ netbox_backup_filename }}
-
-- name: Calculate remote archive checksum
-  ansible.builtin.stat:
-    path: "{{ netbox_backup_file }}"
-    checksum_algorithm: sha256
-    get_checksum: true
-  register: netbox_backup_remote_stat
-
-- name: Transfer backup using SSH streaming
-  ansible.builtin.shell: |
-    set -euo pipefail
-    umask 077
-    target={{ netbox_backup_local_file | quote }}
-    temp="${target}.partial"
-    trap 'rm -f "$temp"' EXIT
-
-    ssh -T -o BatchMode=yes \
-      {{ netbox_backup_remote_ssh_alias | quote }} \
-      "sudo -n cat {{ netbox_backup_file }}" > "$temp"
-
-    mv -f "$temp" "$target"
-  args:
-    executable: /bin/bash
-    creates: "{{ netbox_backup_local_file }}"
-  delegate_to: localhost
-  become: false
-
-- name: Calculate local archive checksum
-  ansible.builtin.stat:
-    path: "{{ netbox_backup_local_file }}"
-    checksum_algorithm: sha256
-    get_checksum: true
-  delegate_to: localhost
-  become: false
-  register: netbox_backup_local_stat
-
-- name: Validate transferred archive
-  ansible.builtin.assert:
-    that:
-      - netbox_backup_local_stat.stat.exists
-      - >-
-        netbox_backup_local_stat.stat.checksum ==
-        netbox_backup_remote_stat.stat.checksum
-    success_msg: "Backup transfer verified with SHA-256."
-    fail_msg: "Backup checksum mismatch."
+- name: Transfer and verify NetBox archives
+  ansible.builtin.include_tasks: transfer_file.yml
+  loop:
+    - "{{ netbox_backup_file }}"
+    - "{{ netbox_backup_media_file }}"
+  loop_control:
+    loop_var: netbox_backup_artifact
+    label: "{{ netbox_backup_artifact | basename }}"

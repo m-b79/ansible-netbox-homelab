@@ -1,0 +1,46 @@
+---
+- name: Validate retention settings
+  ansible.builtin.assert:
+    that:
+      - netbox_backup_retention_count | int >= 1
+      - netbox_backup_local_directory == lookup('env', 'HOME') ~ '/netbox-backups'
+    fail_msg: "Invalid or unsafe backup retention settings."
+
+- name: Find local backup manifests
+  ansible.builtin.find:
+    paths: "{{ netbox_backup_local_directory }}"
+    patterns:
+      - '^netbox_[0-9]{8}T[0-9]{6}_manifest\.yml$'
+    use_regex: true
+    recurse: false
+    file_type: file
+  delegate_to: localhost
+  become: false
+  register: netbox_backup_retention_manifests
+
+- name: Identify old backup sets
+  ansible.builtin.set_fact:
+    netbox_backup_retention_candidates: >-
+      {{
+        (
+          netbox_backup_retention_manifests.files
+          | map(attribute='path')
+          | sort(reverse=true)
+          | list
+        )[netbox_backup_retention_count | int:]
+      }}
+
+- name: Display retention plan
+  ansible.builtin.debug:
+    msg:
+      - "Total sets: {{ netbox_backup_retention_manifests.matched }}"
+      - "Keep latest: {{ netbox_backup_retention_count }}"
+      - "Candidates: {{ netbox_backup_retention_candidates | length }}"
+      - "Deletion enabled: {{ netbox_backup_retention_apply }}"
+
+- name: Process old backup sets
+  ansible.builtin.include_tasks: retention_set.yml
+  loop: "{{ netbox_backup_retention_candidates }}"
+  loop_control:
+    loop_var: netbox_backup_retention_manifest
+    label: "{{ netbox_backup_retention_manifest | basename }}"

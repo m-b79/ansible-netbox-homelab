@@ -1,0 +1,71 @@
+---
+- name: Derive backup ID
+  ansible.builtin.set_fact:
+    netbox_backup_retention_id: >-
+      {{ netbox_backup_retention_manifest | basename |
+         regex_replace('_manifest\.yml$', '') }}
+
+- name: Read candidate manifest
+  ansible.builtin.slurp:
+    src: "{{ netbox_backup_retention_manifest }}"
+  delegate_to: localhost
+  become: false
+  register: netbox_backup_retention_content
+
+- name: Parse candidate manifest
+  ansible.builtin.set_fact:
+    netbox_backup_retention_data: >-
+      {{ netbox_backup_retention_content.content | b64decode | from_yaml }}
+
+- name: Validate manifest contents
+  ansible.builtin.assert:
+    that:
+      - netbox_backup_retention_data.backup_id == netbox_backup_retention_id
+      - netbox_backup_retention_data.archives.database.filename == netbox_backup_retention_id ~ '.pgc'
+      - netbox_backup_retention_data.archives.media.filename == netbox_backup_retention_id ~ '_media.tar.gz'
+    fail_msg: "Unexpected manifest contents. Refusing deletion."
+
+- name: Check candidate database archive
+  ansible.builtin.stat:
+    path: "{{ netbox_backup_local_directory }}/{{ netbox_backup_retention_id }}.pgc"
+    checksum_algorithm: sha256
+  delegate_to: localhost
+  become: false
+  register: netbox_backup_retention_database
+
+- name: Check candidate media archive
+  ansible.builtin.stat:
+    path: "{{ netbox_backup_local_directory }}/{{ netbox_backup_retention_id }}_media.tar.gz"
+    checksum_algorithm: sha256
+  delegate_to: localhost
+  become: false
+  register: netbox_backup_retention_media
+
+- name: Validate complete backup set
+  ansible.builtin.assert:
+    that:
+      - netbox_backup_retention_database.stat.isreg | default(false)
+      - not netbox_backup_retention_database.stat.islnk | default(false)
+      - netbox_backup_retention_media.stat.isreg | default(false)
+      - not netbox_backup_retention_media.stat.islnk | default(false)
+      - netbox_backup_retention_database.stat.checksum == netbox_backup_retention_data.archives.database.sha256
+      - netbox_backup_retention_media.stat.checksum == netbox_backup_retention_data.archives.media.sha256
+    fail_msg: "Backup set incomplete or corrupted. Refusing deletion."
+
+- name: Preview retention candidate
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'DELETE' if netbox_backup_retention_apply | bool else 'DRY RUN' }}:
+      {{ netbox_backup_retention_id }}
+
+- name: Remove validated old backup set
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ netbox_backup_local_directory }}/{{ netbox_backup_retention_id }}.pgc"
+    - "{{ netbox_backup_local_directory }}/{{ netbox_backup_retention_id }}_media.tar.gz"
+    - "{{ netbox_backup_retention_manifest }}"
+  delegate_to: localhost
+  become: false
+  when: netbox_backup_retention_apply | bool
