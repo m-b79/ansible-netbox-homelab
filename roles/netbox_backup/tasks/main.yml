@@ -1,0 +1,61 @@
+---
+- name: Ensure PostgreSQL backup directory exists
+  ansible.builtin.file:
+    path: "{{ netbox_backup_directory }}"
+    state: directory
+    owner: "{{ netbox_backup_postgresql_user }}"
+    group: "{{ netbox_backup_postgresql_user }}"
+    mode: '0700'
+
+- name: Define backup filename
+  ansible.builtin.set_fact:
+    netbox_backup_filename: >-
+      {{ netbox_backup_prefix }}_{{
+      ansible_facts['date_time']['iso8601_basic_short'] }}.pgc
+
+- name: Define backup path
+  ansible.builtin.set_fact:
+    netbox_backup_file: >-
+      {{ netbox_backup_directory }}/{{ netbox_backup_filename }}
+
+- name: Create PostgreSQL backup
+  become: true
+  become_user: "{{ netbox_backup_postgresql_user }}"
+  community.postgresql.postgresql_db:
+    name: "{{ netbox_backup_database }}"
+    state: dump
+    target: "{{ netbox_backup_file }}"
+
+- name: Secure backup file permissions
+  ansible.builtin.file:
+    path: "{{ netbox_backup_file }}"
+    owner: "{{ netbox_backup_postgresql_user }}"
+    group: "{{ netbox_backup_postgresql_user }}"
+    mode: '0600'
+
+- name: Verify PostgreSQL archive structure
+  become: true
+  become_user: "{{ netbox_backup_postgresql_user }}"
+  ansible.builtin.command:
+    argv:
+      - pg_restore
+      - --list
+      - "{{ netbox_backup_file }}"
+  register: netbox_backup_validation
+  changed_when: false
+
+- name: Get backup file information
+  ansible.builtin.stat:
+    path: "{{ netbox_backup_file }}"
+  register: netbox_backup_file_info
+
+- name: Display backup summary
+  ansible.builtin.debug:
+    msg:
+      - "Database: {{ netbox_backup_database }}"
+      - "Backup: {{ netbox_backup_file }}"
+      - "Size: {{ netbox_backup_file_info.stat.size }} bytes"
+      - "Archive listing check: passed"
+
+- name: Externalize PostgreSQL backup
+  ansible.builtin.import_tasks: transfer.yml

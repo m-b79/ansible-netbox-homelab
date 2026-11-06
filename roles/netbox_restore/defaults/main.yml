@@ -1,0 +1,4 @@
+---
+netbox_restore_database: netbox_restore_test
+netbox_restore_backup_directory: /var/backups/netbox
+netbox_restore_postgresql_user: postgres

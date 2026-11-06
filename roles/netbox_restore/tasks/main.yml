@@ -1,0 +1,96 @@
+---
+- name: Ensure restoration targets the test database
+  ansible.builtin.assert:
+    that:
+      - netbox_restore_database == 'netbox_restore_test'
+      - netbox_restore_source is defined
+    fail_msg: "A test database and backup source are required."
+
+- name: Validate backup source path
+  ansible.builtin.assert:
+    that:
+      - netbox_restore_source is match('^/var/backups/netbox/[A-Za-z0-9_.-]+\.pgc$')
+    fail_msg: "Backup must be a .pgc file in /var/backups/netbox."
+
+- name: Check backup file
+  ansible.builtin.stat:
+    path: "{{ netbox_restore_source }}"
+  register: netbox_restore_archive
+
+- name: Ensure backup exists
+  ansible.builtin.assert:
+    that:
+      - netbox_restore_archive.stat.isreg | default(false)
+      - netbox_restore_archive.stat.size | default(0) > 0
+
+- name: Validate archive structure
+  become: true
+  become_user: postgres
+  ansible.builtin.command:
+    argv:
+      - pg_restore
+      - --list
+      - "{{ netbox_restore_source }}"
+  changed_when: false
+
+- name: Check whether test database already exists
+  become: true
+  become_user: postgres
+  ansible.builtin.command:
+    argv:
+      - psql
+      - -At
+      - -d
+      - postgres
+      - -c
+      - "SELECT 1 FROM pg_database WHERE datname = 'netbox_restore_test';"
+  register: netbox_restore_db_check
+  changed_when: false
+
+- name: Refuse to overwrite an existing test database
+  ansible.builtin.assert:
+    that:
+      - netbox_restore_db_check.stdout == ''
+    fail_msg: "Test database already exists. Refusing to overwrite."
+
+- name: Create isolated restore database
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "{{ netbox_restore_database }}"
+    owner: postgres
+    encoding: UTF8
+    state: present
+
+- name: Restore PostgreSQL archive
+  become: true
+  become_user: postgres
+  ansible.builtin.command:
+    argv:
+      - pg_restore
+      - --dbname=netbox_restore_test
+      - --no-owner
+      - --no-privileges
+      - --single-transaction
+      - "{{ netbox_restore_source }}"
+  changed_when: true
+
+- name: Count restored tables
+  become: true
+  become_user: postgres
+  ansible.builtin.command:
+    argv:
+      - psql
+      - -At
+      - -d
+      - netbox_restore_test
+      - -c
+      - "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE';"
+  register: netbox_restore_table_count
+  changed_when: false
+
+- name: Validate restored database
+  ansible.builtin.assert:
+    that:
+      - netbox_restore_table_count.stdout | int > 0
+    success_msg: "Restoration succeeded; NetBox tables are present."
