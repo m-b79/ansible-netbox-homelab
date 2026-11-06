@@ -1,0 +1,19 @@
+---
+netbox_backup_database: netbox
+netbox_backup_directory: /var/backups/netbox
+netbox_backup_prefix: netbox
+netbox_backup_postgresql_user: postgres
+
+
+# Offsite backup configuration
+netbox_backup_remote_ssh_alias: netbox-lab
+
+netbox_backup_local_directory: >-
+  {{ lookup('env', 'HOME') }}/netbox-backups
+
+
+# Backup retention
+netbox_backup_retention_count: 7
+
+# Safety: preview deletions by default
+netbox_backup_retention_apply: false

@@ -1,0 +1,33 @@
+---
+- name: Define media backup path
+  ansible.builtin.set_fact:
+    netbox_backup_media_file: >-
+      {{ netbox_backup_directory }}/{{
+      netbox_backup_prefix }}_{{
+      ansible_facts['date_time']['iso8601_basic_short'] }}_media.tar.gz
+
+- name: Archive NetBox media files
+  ansible.builtin.command:
+    argv:
+      - tar
+      - -C
+      - /opt/netbox/netbox
+      - -czf
+      - "{{ netbox_backup_media_file }}"
+      - media
+  changed_when: true
+
+- name: Secure media archive
+  ansible.builtin.file:
+    path: "{{ netbox_backup_media_file }}"
+    owner: postgres
+    group: postgres
+    mode: '0600'
+
+- name: Verify media archive
+  ansible.builtin.command:
+    argv:
+      - tar
+      - -tzf
+      - "{{ netbox_backup_media_file }}"
+  changed_when: false

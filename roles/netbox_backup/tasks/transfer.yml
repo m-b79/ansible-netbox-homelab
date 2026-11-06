@@ -1,0 +1,17 @@
+---
+- name: Prepare local backup directory
+  ansible.builtin.file:
+    path: "{{ netbox_backup_local_directory }}"
+    state: directory
+    mode: '0700'
+  delegate_to: localhost
+  become: false
+
+- name: Transfer and verify NetBox archives
+  ansible.builtin.include_tasks: transfer_file.yml
+  loop:
+    - "{{ netbox_backup_file }}"
+    - "{{ netbox_backup_media_file }}"
+  loop_control:
+    loop_var: netbox_backup_artifact
+    label: "{{ netbox_backup_artifact | basename }}"
