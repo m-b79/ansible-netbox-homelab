@@ -1,0 +1,31 @@
+# Python virtual environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Ansible runtime
+*.retry
+.ansible/
+.ansible-lint/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*~
+
+# Unencrypted secrets
+.vault_pass
+.vault_password
+.env
+.env.*
+*.pem
+*.key
+id_rsa
+id_ed25519
+*secret*.plaintext.yml
+
+# Local editor settings
+.vscode/
+.idea/

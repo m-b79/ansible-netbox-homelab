@@ -1,0 +1,4 @@
+---
+patch_apply: false
+patch_reboot_enabled: false
+patch_cache_valid_time: 3600

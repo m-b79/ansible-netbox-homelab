@@ -1,0 +1,72 @@
+---
+- name: Install Apache
+  ansible.builtin.apt:
+    name: "{{ apache_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Enable Apache modules
+  ansible.builtin.command:
+    cmd: a2enmod proxy proxy_http headers
+  register: apache_modules
+  changed_when: "'Enabling module' in apache_modules.stdout"
+  notify: Reload Apache
+
+- name: Configure Apache listening port
+  ansible.builtin.lineinfile:
+    path: /etc/apache2/ports.conf
+    regexp: '^Listen 80$'
+    line: "Listen {{ apache_listen_address }}:{{ apache_listen_port }}"
+  notify: Reload Apache
+
+- name: Disable default Apache website
+  ansible.builtin.file:
+    path: /etc/apache2/sites-enabled/000-default.conf
+    state: absent
+  notify: Reload Apache
+
+- name: Deploy NetBox VirtualHost
+  ansible.builtin.template:
+    src: netbox.conf.j2
+    dest: /etc/apache2/sites-available/netbox.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload Apache
+
+- name: Enable NetBox VirtualHost
+  ansible.builtin.file:
+    src: /etc/apache2/sites-available/netbox.conf
+    dest: /etc/apache2/sites-enabled/netbox.conf
+    state: link
+  notify: Reload Apache
+
+- name: Validate Apache configuration
+  ansible.builtin.command:
+    cmd: apache2ctl configtest
+  register: apache_configtest
+  changed_when: false
+
+- name: Ensure Apache is enabled and started
+  ansible.builtin.systemd_service:
+    name: "{{ apache_service }}"
+    enabled: true
+    state: started
+
+- name: Apply Apache configuration changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify NetBox HTTP response
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ apache_listen_port }}/login/"
+    status_code:
+      - 200
+      - 301
+      - 302
+    return_content: false
+  register: apache_http_check
+
+- name: Display HTTP validation
+  ansible.builtin.debug:
+    msg: "NetBox HTTP status: {{ apache_http_check.status }}"

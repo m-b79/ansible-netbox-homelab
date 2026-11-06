@@ -1,0 +1,40 @@
+---
+- name: Check supported distribution
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Ubuntu'
+    fail_msg: "This role currently supports Ubuntu only."
+
+- name: Update APT cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: "{{ patch_cache_valid_time }}"
+
+- name: Upgrade installed packages
+  ansible.builtin.apt:
+    upgrade: safe
+  register: patch_upgrade_result
+  when: patch_apply | bool
+
+- name: Check if reboot is required
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: patch_reboot_required
+
+- name: Display maintenance summary
+  ansible.builtin.debug:
+    msg:
+      - "Host: {{ inventory_hostname }}"
+      - "OS: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}"
+      - "Upgrade requested: {{ patch_apply }}"
+      - "Packages changed: {{ patch_upgrade_result.changed | default(false) }}"
+      - "Reboot required: {{ patch_reboot_required.stat.exists }}"
+
+- name: Reboot server if authorized and required
+  ansible.builtin.reboot:
+    reboot_timeout: 600
+    post_reboot_delay: 10
+  when:
+    - patch_apply | bool
+    - patch_reboot_enabled | bool
+    - patch_reboot_required.stat.exists

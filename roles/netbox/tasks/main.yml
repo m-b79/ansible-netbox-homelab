@@ -1,0 +1,170 @@
+---
+- name: Check supported operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Ubuntu'
+      - ansible_facts['distribution_version'] == '24.04'
+      - ansible_facts['architecture'] == 'aarch64'
+    fail_msg: "This lab targets Ubuntu 24.04 ARM64."
+
+- name: Install NetBox system dependencies
+  ansible.builtin.apt:
+    name: "{{ netbox_system_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create NetBox system group
+  ansible.builtin.group:
+    name: "{{ netbox_group }}"
+    system: true
+    state: present
+
+- name: Create NetBox system user
+  ansible.builtin.user:
+    name: "{{ netbox_user }}"
+    group: "{{ netbox_group }}"
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+    state: present
+
+- name: Clone NetBox repository at selected version
+  ansible.builtin.git:
+    repo: "{{ netbox_repo }}"
+    dest: "{{ netbox_install_dir }}"
+    version: "{{ netbox_version }}"
+    update: true
+
+- name: Display deployed NetBox version
+  ansible.builtin.command:
+    cmd: git describe --tags --exact-match
+    chdir: "{{ netbox_install_dir }}"
+  register: netbox_git_version
+  changed_when: false
+
+- name: Show NetBox version
+  ansible.builtin.debug:
+    msg: "NetBox source version: {{ netbox_git_version.stdout }}"
+
+- name: Ensure NetBox secrets are available
+  ansible.builtin.assert:
+    that:
+      - vault_postgresql_password is defined
+      - vault_redis_password is defined
+      - vault_netbox_secret_key is defined
+      - vault_netbox_api_token_pepper is defined
+      - vault_netbox_secret_key | length >= 50
+      - vault_netbox_api_token_pepper | length >= 50
+  no_log: true
+
+- name: Deploy NetBox configuration
+  ansible.builtin.template:
+    src: configuration.py.j2
+    dest: "{{ netbox_config_file }}"
+    owner: root
+    group: "{{ netbox_group }}"
+    mode: '0640'
+  no_log: true
+
+- name: Validate NetBox configuration syntax
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "import ast, sys; ast.parse(open(sys.argv[1]).read())"
+      - "{{ netbox_config_file }}"
+  changed_when: false
+  no_log: true
+
+- name: Ensure NetBox writable directories exist
+  ansible.builtin.file:
+    path: "{{ netbox_install_dir }}/netbox/{{ item }}"
+    state: directory
+    owner: "{{ netbox_user }}"
+    group: "{{ netbox_group }}"
+    mode: '0755'
+  loop:
+    - media
+    - reports
+    - scripts
+
+- name: Check whether NetBox version is initialized
+  ansible.builtin.stat:
+    path: "{{ netbox_install_dir }}/.ansible-installed-{{ netbox_version }}"
+  register: netbox_install_marker
+
+- name: Initialize NetBox application
+  ansible.builtin.command:
+    argv:
+      - /bin/bash
+      - "{{ netbox_install_dir }}/upgrade.sh"
+    chdir: "{{ netbox_install_dir }}"
+  environment:
+    PYTHON: /usr/bin/python3.12
+  register: netbox_install_result
+  when: not netbox_install_marker.stat.exists
+
+- name: Mark NetBox version as initialized
+  ansible.builtin.file:
+    path: "{{ netbox_install_dir }}/.ansible-installed-{{ netbox_version }}"
+    state: touch
+    owner: root
+    group: root
+    mode: '0644'
+  when: netbox_install_result is changed
+
+- name: Verify NetBox Django configuration
+  ansible.builtin.command:
+    argv:
+      - "{{ netbox_install_dir }}/venv/bin/python"
+      - "{{ netbox_install_dir }}/netbox/manage.py"
+      - check
+    chdir: "{{ netbox_install_dir }}/netbox"
+  changed_when: false
+
+- name: Deploy Gunicorn configuration
+  ansible.builtin.template:
+    src: gunicorn.py.j2
+    dest: "{{ netbox_install_dir }}/gunicorn.py"
+    owner: root
+    group: "{{ netbox_group }}"
+    mode: '0644'
+  notify: Restart NetBox
+
+- name: Install NetBox systemd units
+  ansible.builtin.copy:
+    src: "{{ netbox_install_dir }}/contrib/{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - netbox.service
+    - netbox-rq.service
+  notify:
+    - Reload systemd
+    - Restart NetBox services
+
+- name: Enable and start NetBox services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - netbox
+    - netbox-rq
+
+- name: Apply pending service changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Check NetBox services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+  loop:
+    - netbox
+    - netbox-rq
+  register: netbox_service_check

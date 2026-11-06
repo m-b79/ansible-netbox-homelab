@@ -1,0 +1,13 @@
+
+# Managed by Ansible
+
+bind = "{{ netbox_gunicorn_bind }}"
+workers = {{ netbox_gunicorn_workers }}
+worker_class = "sync"
+
+timeout = 120
+max_requests = 5000
+max_requests_jitter = 500
+
+# Temporary disable to prevent permissions errors on /home/netbox
+control_socket_disable = True

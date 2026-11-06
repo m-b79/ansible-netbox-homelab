@@ -1,0 +1,40 @@
+
+# Managed by Ansible - Do not edit manually
+
+<VirtualHost {{ apache_listen_address }}:{{ apache_listen_port }}>
+
+    ServerName {{ apache_server_name }}
+
+    ProxyRequests Off
+    ProxyPreserveHost On
+
+    # Static assets
+    ProxyPass /static/ !
+    Alias /static/ {{ apache_netbox_static }}/
+
+    <Directory "{{ apache_netbox_static }}">
+        Options FollowSymLinks
+        AllowOverride None
+        Require all granted
+    </Directory>
+
+    # Uploaded media
+    ProxyPass /media/ !
+    Alias /media/ {{ apache_netbox_media }}/
+
+    <Directory "{{ apache_netbox_media }}">
+        Options FollowSymLinks
+        AllowOverride None
+        Require all granted
+    </Directory>
+
+    # Reverse proxy to Gunicorn
+    RequestHeader set X-Forwarded-Proto "http"
+
+    ProxyPass / {{ apache_netbox_backend }}/
+    ProxyPassReverse / {{ apache_netbox_backend }}/
+
+    ErrorLog ${APACHE_LOG_DIR}/netbox-error.log
+    CustomLog ${APACHE_LOG_DIR}/netbox-access.log combined
+
+</VirtualHost>

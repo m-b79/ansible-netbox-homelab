@@ -1,0 +1,8 @@
+---
+- name: Maintain Oracle Ubuntu servers
+  hosts: netbox-lab-01
+  become: true
+  gather_facts: true
+
+  roles:
+    - linux_patching

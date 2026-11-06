@@ -1,0 +1,11 @@
+---
+postgresql_packages:
+  - postgresql-16
+  - postgresql-client-16
+  - python3-psycopg2
+
+postgresql_service: postgresql
+
+postgresql_database: netbox
+postgresql_user: netbox
+postgresql_encoding: UTF8

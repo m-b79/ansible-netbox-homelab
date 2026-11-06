@@ -1,0 +1,67 @@
+---
+- name: Check supported operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Ubuntu'
+      - ansible_facts['distribution_version'] == '24.04'
+
+- name: Ensure Redis password is provided
+  ansible.builtin.assert:
+    that:
+      - vault_redis_password is defined
+      - vault_redis_password | length >= 32
+    fail_msg: "A strong Redis password is required."
+  no_log: true
+
+- name: Install Redis packages
+  ansible.builtin.apt:
+    name: "{{ redis_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Bind Redis to localhost only
+  ansible.builtin.lineinfile:
+    path: "{{ redis_config_file }}"
+    regexp: '^\s*#?\s*bind\s+'
+    line: "bind {{ redis_bind_address }}"
+  notify: Restart Redis
+
+- name: Enable Redis protected mode
+  ansible.builtin.lineinfile:
+    path: "{{ redis_config_file }}"
+    regexp: '^\s*#?\s*protected-mode\s+'
+    line: "protected-mode yes"
+  notify: Restart Redis
+
+- name: Set Redis authentication password
+  ansible.builtin.lineinfile:
+    path: "{{ redis_config_file }}"
+    regexp: '^\s*#?\s*requirepass\s+'
+    line: "requirepass {{ vault_redis_password }}"
+    backup: false
+  no_log: true
+  notify: Restart Redis
+
+- name: Ensure Redis service is enabled
+  ansible.builtin.systemd_service:
+    name: "{{ redis_service }}"
+    enabled: true
+    state: started
+
+- name: Apply pending Redis configuration
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify Redis authentication and availability
+  ansible.builtin.command:
+    cmd: redis-cli -h 127.0.0.1 ping
+  environment:
+    REDISCLI_AUTH: "{{ vault_redis_password }}"
+  register: redis_ping
+  changed_when: false
+  failed_when: redis_ping.rc != 0 or redis_ping.stdout != 'PONG'
+  no_log: true
+
+- name: Display Redis validation result
+  ansible.builtin.debug:
+    msg: "Redis is running and authentication succeeded."

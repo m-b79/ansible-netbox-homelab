@@ -1,0 +1,46 @@
+---
+netbox_version: "v4.7.4"
+
+netbox_repo: "https://github.com/netbox-community/netbox.git"
+netbox_install_dir: "/opt/netbox"
+
+netbox_user: "netbox"
+netbox_group: "netbox"
+
+netbox_system_packages:
+  - git
+  - python3
+  - python3-pip
+  - python3-venv
+  - python3-dev
+  - build-essential
+  - libxml2-dev
+  - libxslt1-dev
+  - libffi-dev
+  - libpq-dev
+  - libssl-dev
+  - zlib1g-dev
+
+
+# Application configuration
+netbox_config_file: "{{ netbox_install_dir }}/netbox/netbox/configuration.py"
+
+netbox_allowed_hosts:
+  - localhost
+  - 127.0.0.1
+
+# PostgreSQL connection
+netbox_db_host: "127.0.0.1"
+netbox_db_port: 5432
+netbox_db_name: "netbox"
+netbox_db_user: "netbox"
+
+# Redis connection
+netbox_redis_host: "127.0.0.1"
+netbox_redis_port: 6379
+netbox_redis_tasks_db: 0
+netbox_redis_cache_db: 1
+
+# Gunicorn
+netbox_gunicorn_bind: "127.0.0.1:8001"
+netbox_gunicorn_workers: 3

@@ -1,0 +1,22 @@
+---
+- name: Collect Linux system information
+  hosts: linux_servers
+  gather_facts: true
+
+  tasks:
+    - name: Display operating system
+      ansible.builtin.debug:
+        msg: >-
+          Host {{ inventory_hostname }}
+          runs {{ ansible_facts['distribution'] }}
+          {{ ansible_facts['distribution_version'] }}
+
+    - name: Display system architecture
+      ansible.builtin.debug:
+        msg: "Architecture: {{ ansible_facts['architecture'] }}"
+
+    - name: Ensure lab directory exists
+      ansible.builtin.file:
+        path: "{{ ansible_facts['env']['HOME'] }}/ansible-lab-test"
+        state: directory
+        mode: '0755'

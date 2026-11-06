@@ -1,0 +1,8 @@
+---
+- name: Deploy Redis for NetBox
+  hosts: netbox-lab-01
+  become: true
+  gather_facts: true
+
+  roles:
+    - redis

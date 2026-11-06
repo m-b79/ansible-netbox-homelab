@@ -1,0 +1,47 @@
+
+---
+- name: Check supported operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Ubuntu'
+      - ansible_facts['distribution_version'] == '24.04'
+
+- name: Ensure PostgreSQL password is provided
+  ansible.builtin.assert:
+    that:
+      - vault_postgresql_password is defined
+      - vault_postgresql_password | length > 0
+    fail_msg: "PostgreSQL password is missing."
+  no_log: true
+
+- name: Install PostgreSQL packages
+  ansible.builtin.apt:
+    name: "{{ postgresql_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure PostgreSQL service is running
+  ansible.builtin.service:
+    name: "{{ postgresql_service }}"
+    state: started
+    enabled: true
+
+- name: Create NetBox PostgreSQL user
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: "{{ postgresql_user }}"
+    password: "{{ vault_postgresql_password }}"
+    role_attr_flags: LOGIN
+    state: present
+  no_log: true
+
+- name: Create NetBox database
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "{{ postgresql_database }}"
+    owner: "{{ postgresql_user }}"
+    encoding: "{{ postgresql_encoding }}"
+    state: present

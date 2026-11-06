@@ -1,0 +1,39 @@
+
+# Managed by Ansible - Do not edit manually
+
+ALLOWED_HOSTS = {{ netbox_allowed_hosts | to_json }}
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': {{ netbox_db_name | to_json }},
+        'USER': {{ netbox_db_user | to_json }},
+        'PASSWORD': {{ vault_postgresql_password | to_json }},
+        'HOST': {{ netbox_db_host | to_json }},
+        'PORT': {{ netbox_db_port }},
+        'CONN_MAX_AGE': 300,
+    }
+}
+
+REDIS = {
+    'tasks': {
+        'HOST': {{ netbox_redis_host | to_json }},
+        'PORT': {{ netbox_redis_port }},
+        'PASSWORD': {{ vault_redis_password | to_json }},
+        'DATABASE': {{ netbox_redis_tasks_db }},
+        'SSL': False,
+    },
+    'caching': {
+        'HOST': {{ netbox_redis_host | to_json }},
+        'PORT': {{ netbox_redis_port }},
+        'PASSWORD': {{ vault_redis_password | to_json }},
+        'DATABASE': {{ netbox_redis_cache_db }},
+        'SSL': False,
+    }
+}
+
+SECRET_KEY = {{ vault_netbox_secret_key | to_json }}
+
+API_TOKEN_PEPPERS = {
+    1: {{ vault_netbox_api_token_pepper | to_json }},
+}

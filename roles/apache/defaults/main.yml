@@ -1,0 +1,12 @@
+---
+apache_packages:
+  - apache2
+
+apache_service: apache2
+apache_server_name: localhost
+apache_listen_address: "127.0.0.1"
+apache_listen_port: 8080
+
+apache_netbox_backend: "http://127.0.0.1:8001"
+apache_netbox_static: "/opt/netbox/netbox/static"
+apache_netbox_media: "/opt/netbox/netbox/media"
